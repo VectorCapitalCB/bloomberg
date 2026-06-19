@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>cl.vc.arb</groupId>
+	<artifactId>ORB-BLOOMBERG</artifactId>
+	<version>1.0</version>
+	<name>ORB-BLOOMBERG</name>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.compiler.source>21</maven.compiler.source>
+		<maven.compiler.target>21</maven.compiler.target>
+		<!-- Ajusta a la version del blpapi.jar que instalaste en tu .m2 (mvn install:install-file). -->
+		<blpapi.version>3.24.6-1</blpapi.version>
+	</properties>
+
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.8.1</version>
+				<configuration>
+					<source>21</source>
+					<target>21</target>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.5.1</version>
+				<executions>
+					<execution>
+						<id>fat-jar</id>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<createDependencyReducedPom>false</createDependencyReducedPom>
+							<shadedArtifactAttached>true</shadedArtifactAttached>
+							<shadedClassifierName>fat</shadedClassifierName>
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.DSA</exclude>
+										<exclude>META-INF/*.RSA</exclude>
+									</excludes>
+								</filter>
+							</filters>
+							<transformers>
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+									<mainClass>cl.vc.arb.apps.fh.MainApp</mainClass>
+								</transformer>
+							</transformers>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-antrun-plugin</artifactId>
+				<version>3.1.0</version>
+				<executions>
+					<execution>
+						<id>remove-thin-jar</id>
+						<phase>package</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<target>
+								<delete file="${project.build.directory}/${project.build.finalName}.jar"/>
+							</target>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+
+	<dependencies>
+
+		<dependency>
+			<groupId>org.apache.kafka</groupId>
+			<artifactId>kafka-clients</artifactId>
+			<version>4.0.0</version>
+		</dependency>
+
+
+		<dependency>
+			<groupId>com.googlecode.json-simple</groupId>
+			<artifactId>json-simple</artifactId>
+			<version>1.1</version>
+		</dependency>
+
+
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>31.0.1-jre</version>
+		</dependency>
+
+
+
+		<dependency>
+			<groupId>com.github.VectorCapitalCB</groupId>
+			<artifactId>principal-module</artifactId>
+			<version>1.4.5</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<scope>provided</scope>
+			<version>1.18.38</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<version>2.0.17</version>
+		</dependency>
+
+		<dependency>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-classic</artifactId>
+			<version>1.5.18</version>
+		</dependency>
+	</dependencies>
+
+	<!--
+	  Perfil 'bloomberg': compila la ingesta BLPAPI (src/bloomberg/java) y agrega blpapi.
+	  El build por defecto (SIN este perfil) NO necesita blpapi y corre en modo simulador.
+	  En la maquina con el SDK Bloomberg:
+	    1) mvn install:install-file -Dfile=blpapi-3.24.6-1.jar -DgroupId=com.bloomberglp -DartifactId=blpapi -Dversion=3.24.6-1 -Dpackaging=jar
+	    2) mvn -Pbloomberg -DskipTests package
+	  En runtime ademas: blpapi3_64.dll en el PATH y una Terminal Bloomberg corriendo.
+	-->
+	<profiles>
+		<profile>
+			<id>bloomberg</id>
+			<dependencies>
+				<dependency>
+					<groupId>com.bloomberglp</groupId>
+					<artifactId>blpapi</artifactId>
+					<version>${blpapi.version}</version>
+					<scope>provided</scope>
+				</dependency>
+			</dependencies>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.codehaus.mojo</groupId>
+						<artifactId>build-helper-maven-plugin</artifactId>
+						<version>3.6.0</version>
+						<executions>
+							<execution>
+								<id>add-bloomberg-source</id>
+								<phase>generate-sources</phase>
+								<goals>
+									<goal>add-source</goal>
+								</goals>
+								<configuration>
+									<sources>
+										<source>src/bloomberg/java</source>
+									</sources>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
+</project>

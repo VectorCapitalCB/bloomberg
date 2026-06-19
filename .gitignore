@@ -1,0 +1,40 @@
+# Maven
+target/
+*.jar
+*.war
+*.ear
+*.class
+
+# IntelliJ IDEA
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Profiling & temp files
+profiling/
+threads-server-final.txt
+server-jar-extract/
+server-orb-bcs-jar.tar
+*.jar
+
+# jpackage / installer build output
+build/
+*.msi
+*.exe
+*.dll
+
+# Bloomberg SDK binaries (no versionar; cada maquina de build los provee)
+lib/

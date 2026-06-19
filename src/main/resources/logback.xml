@@ -1,0 +1,34 @@
+<configuration>
+
+	<!-- Directorio de logs: lo fija el Bootstrap (servicio) a %PROGRAMDATA%\ORB-BLOOMBERG\logs;
+	     por defecto (dev) escribe en ./logs. Se puede forzar con -Dlog.dir=... -->
+	<property name="LOG_DIR" value="${log.dir:-logs}" />
+
+	<appender name="Console" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+			<pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%level] [%logger{1}] [%thread] - %msg%n</pattern>
+		</encoder>
+	</appender>
+
+	<appender name="File" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_DIR}/orb-bloomberg.log</file>
+		<rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+			<fileNamePattern>${LOG_DIR}/orb-bloomberg.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+			<maxHistory>30</maxHistory>
+		</rollingPolicy>
+		<encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+			<pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%level] [%logger{1}] [%thread] - %msg%n</pattern>
+		</encoder>
+	</appender>
+
+	<logger name="cl.vc" level="INFO" additivity="false">
+		<appender-ref ref="Console" />
+		<appender-ref ref="File" />
+	</logger>
+
+	<root level="WARN">
+		<appender-ref ref="Console" />
+		<appender-ref ref="File" />
+	</root>
+
+</configuration>

@@ -1,0 +1,9 @@
+{
+  "instruments": [
+    { "symbol": "IBM",    "last": 168.40, "open": 167.10, "variation": 0.78, "bidQty": 1200, "askQty": 1500 },
+    { "symbol": "AAPL",   "last": 195.20, "open": 193.80, "variation": 0.72, "bidQty": 3400, "askQty": 2900 },
+    { "symbol": "MSFT",   "last": 421.10, "open": 418.55, "variation": 0.61, "bidQty": 1800, "askQty": 2100 },
+    { "symbol": "SPY",    "last": 537.85, "open": 536.20, "variation": 0.31, "bidQty": 5200, "askQty": 4800 },
+    { "symbol": "EURUSD", "last": 1.0842, "open": 1.0830, "variation": 0.11, "bidQty": 1000000, "askQty": 1000000 }
+  ]
+}
