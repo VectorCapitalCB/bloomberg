@@ -6,7 +6,7 @@
 
 	<groupId>cl.vc.arb</groupId>
 	<artifactId>ORB-BLOOMBERG</artifactId>
-	<version>1.0</version>
+	<version>1.2</version>
 	<name>ORB-BLOOMBERG</name>
 
 	<properties>
@@ -14,7 +14,7 @@
 		<maven.compiler.source>21</maven.compiler.source>
 		<maven.compiler.target>21</maven.compiler.target>
 		<!-- Ajusta a la version del blpapi.jar que instalaste en tu .m2 (mvn install:install-file). -->
-		<blpapi.version>3.24.6-1</blpapi.version>
+		<blpapi.version>3.26.5.1</blpapi.version>
 	</properties>
 
 

@@ -84,6 +84,11 @@ public class MainApp {
     private static cl.vc.arb.apps.fh.ingest.BloombergGateway bloombergGateway;
 
     @Getter
+    private static final long startTimeMs = System.currentTimeMillis();
+
+    private static cl.vc.arb.apps.fh.admin.AdminServer adminServer;
+
+    @Getter
     @Setter
     private static Properties properties;
 
@@ -207,11 +212,34 @@ public class MainApp {
 
             new Thread(nettyProtobufServer).start();
 
+            if (Boolean.parseBoolean(properties.getProperty("admin.enabled", "true"))) {
+                int adminPort = Integer.parseInt(properties.getProperty("admin.port", "8090"));
+                adminServer = new cl.vc.arb.apps.fh.admin.AdminServer(adminPort);
+                adminServer.start();
+                if (Boolean.parseBoolean(properties.getProperty("admin.open.browser", "true"))) {
+                    openAdmin(adminPort);
+                }
+            }
+
             start();
             startDiagnostics();
 
         } catch (Exception ex) {
             log.error(ex.getMessage(), ex);
+        }
+    }
+
+    /** Abre el panel admin en el navegador (al hacer doble clic se ve algo, no queda "sin abrir"). */
+    private static void openAdmin(int port) {
+        try {
+            if (!java.awt.GraphicsEnvironment.isHeadless()
+                    && java.awt.Desktop.isDesktopSupported()
+                    && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                java.awt.Desktop.getDesktop().browse(new java.net.URI("http://localhost:" + port + "/"));
+                log.info("panel admin abierto en el navegador -> http://localhost:{}/", port);
+            }
+        } catch (Throwable t) {
+            log.debug("no se pudo abrir el navegador automaticamente: {}", t.getMessage());
         }
     }
 

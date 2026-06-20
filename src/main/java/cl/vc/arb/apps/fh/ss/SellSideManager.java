@@ -114,6 +114,7 @@ public class SellSideManager extends AbstractActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(Subscribe.class, this::onMarketDataRequest)
+                .match(AdminUnsub.class, this::onAdminUnsub)
                 .match(Terminated.class, this::onChildTerminated)
                 .build();
     }
@@ -122,6 +123,19 @@ public class SellSideManager extends AbstractActor {
     public static class Subscribe {
         private final MarketDataMessage.Subscribe subscribe;
         private final ActorRef actorRef;
+    }
+
+    @Data
+    public static class AdminUnsub {
+        private final String topic;
+    }
+
+    private void onAdminUnsub(AdminUnsub msg) {
+        ActorRef a = mapActor.get(msg.getTopic());
+        if (a != null) {
+            getContext().stop(a);
+            log.info("admin unsubscribe topic={} actor={}", msg.getTopic(), a);
+        }
     }
 
     private void onMarketDataRequest(Subscribe request) {

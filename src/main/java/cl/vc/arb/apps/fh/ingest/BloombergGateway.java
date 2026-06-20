@@ -31,6 +31,11 @@ public interface BloombergGateway {
     /** Desengancha el actor; si la security se queda sin actores, retira la suscripcion BLPAPI. */
     void unsubscribe(String topic, ActorRef topicActor);
 
+    /** true si la sesion BLPAPI esta abierta y operativa. */
+    default boolean isConnected() {
+        return false;
+    }
+
     /** Cierra la sesion BLPAPI. */
     default void stop() {
     }

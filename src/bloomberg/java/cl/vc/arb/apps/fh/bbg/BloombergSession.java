@@ -42,6 +42,7 @@ public class BloombergSession implements BloombergGateway {
 
     private final Properties properties;
     private Session session;
+    private volatile boolean connected = false;
 
     // Una suscripcion BLPAPI por security, con fan-out a N actores de topic.
     private final Map<String, Long> cidBySecurity = new ConcurrentHashMap<>();
@@ -75,6 +76,7 @@ public class BloombergSession implements BloombergGateway {
                 log.error("bloomberg: no se pudo abrir el servicio {}", MKTDATA_SERVICE);
                 return;
             }
+            connected = true;
             log.info("bloomberg session OK {}:{} service={}", host, port, MKTDATA_SERVICE);
         } catch (Throwable t) {
             // Throwable: tambien atrapa UnsatisfiedLinkError si falta blpapi3_64.dll.
@@ -150,7 +152,13 @@ public class BloombergSession implements BloombergGateway {
     }
 
     @Override
+    public boolean isConnected() {
+        return connected && session != null;
+    }
+
+    @Override
     public void stop() {
+        connected = false;
         try {
             if (session != null) {
                 session.stop();

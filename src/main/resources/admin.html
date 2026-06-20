@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ORB-BLOOMBERG · Admin</title>
+<style>
+  :root{ --bg:#0b0f14; --panel:#11161d; --panel2:#161c25; --bd:#222b36; --bd2:#2c3744; --tx:#e6edf3; --tx2:#90a0b0; --tx3:#5b6877;
+         --green:#3fb950; --red:#f85149; --amber:#d6a121; --blue:#58a6ff; --mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace; }
+  *{ box-sizing:border-box; } html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--tx); font-family:"Segoe UI",system-ui,sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:1200px; margin:0 auto; padding:18px 20px 44px; }
+  header{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+  .brand{ display:flex; align-items:center; gap:11px; }
+  .brand .dot{ width:30px; height:30px; border-radius:8px; background:#1f6feb1f; color:var(--blue); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px; }
+  .brand h1{ font-size:16px; margin:0; font-weight:600; letter-spacing:.2px; }
+  .brand .sub{ font-size:12px; color:var(--tx2); margin-top:2px; font-family:var(--mono); }
+  .ctr{ display:flex; gap:9px; align-items:center; flex-wrap:wrap; }
+  .pill{ display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; padding:6px 12px; border-radius:20px; }
+  .pill.ok{ background:#2ea04322; color:var(--green); } .pill.bad{ background:#f8514922; color:var(--red); }
+  .pill .led{ width:8px; height:8px; border-radius:50%; background:currentColor; box-shadow:0 0 0 0 currentColor; }
+  .pill.ok .led{ animation:pulse 2s infinite; } @keyframes pulse{ 0%{box-shadow:0 0 0 0 #3fb95066;} 70%{box-shadow:0 0 0 6px #3fb95000;} 100%{box-shadow:0 0 0 0 #3fb95000;} }
+  button{ background:var(--panel2); color:var(--tx); border:1px solid var(--bd2); border-radius:8px; padding:7px 13px; font-size:13px; cursor:pointer; transition:background .12s,border-color .12s; }
+  button:hover{ background:#1d2531; border-color:#3a4757; } button:active{ transform:translateY(.5px); }
+  button.warn{ border-color:#7a560a; color:var(--amber); } button.warn:hover{ background:#2a2410; }
+  button.go{ border-color:#1d6a2c; color:var(--green); } button.go:hover{ background:#10240f; }
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:11px; margin-bottom:18px; }
+  .card{ background:var(--panel); border:1px solid var(--bd); border-radius:11px; padding:12px 14px; }
+  .card .lab{ font-size:11.5px; color:var(--tx2); text-transform:uppercase; letter-spacing:.5px; }
+  .card .val{ font-size:24px; font-weight:600; font-family:var(--mono); margin-top:4px; font-variant-numeric:tabular-nums; }
+  .panel{ background:var(--panel); border:1px solid var(--bd); border-radius:13px; padding:15px 17px; margin-bottom:18px; }
+  .ph{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+  .ph h2{ font-size:14px; margin:0; font-weight:600; }
+  .ph .note{ font-size:12px; color:var(--tx3); margin-top:2px; }
+  input[type=text]{ background:var(--bg); border:1px solid var(--bd2); color:var(--tx); border-radius:8px; padding:7px 11px; font-size:13px; outline:none; }
+  input[type=text]:focus{ border-color:var(--blue); }
+  .tscroll{ overflow:auto; margin-top:8px; border-radius:8px; }
+  table{ width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th,td{ padding:8px 9px; text-align:right; font-family:var(--mono); font-size:13px; white-space:nowrap; }
+  th{ color:var(--tx2); font-family:"Segoe UI",sans-serif; font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.4px; position:sticky; top:0; background:var(--panel); border-bottom:1px solid var(--bd2); }
+  td:first-child,th:first-child{ text-align:left; }
+  tbody tr{ border-bottom:1px solid #1a212b; } tbody tr:hover{ background:#141b24; }
+  .sym{ color:var(--tx); font-weight:600; }
+  .bid{ color:var(--green); } .ask{ color:var(--red); } .muted{ color:var(--tx3); }
+  td.fu{ animation:fu .55s ease-out; } @keyframes fu{ from{background:#2ea04340;} to{background:transparent;} }
+  td.fd{ animation:fd .55s ease-out; } @keyframes fd{ from{background:#f8514940;} to{background:transparent;} }
+  .xbtn{ background:none; border:1px solid var(--bd2); color:var(--tx3); border-radius:6px; padding:2px 9px; font-size:13px; cursor:pointer; }
+  .xbtn:hover{ color:var(--red); border-color:#7a2620; }
+  #log{ background:#070a0e; border:1px solid var(--bd); border-radius:9px; padding:11px 13px; font-family:var(--mono); font-size:12.5px; line-height:1.8; height:300px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+  #log .t{ color:var(--tx3); } #log .ok{ color:var(--green); } #log .warn{ color:var(--amber); } #log .err{ color:var(--red); }
+  .toast{ position:fixed; bottom:20px; right:20px; background:var(--panel2); border:1px solid var(--bd2); border-radius:9px; padding:11px 15px; font-size:13px; opacity:0; transform:translateY(6px); transition:.2s; }
+  .toast.show{ opacity:1; transform:none; }
+  .empty{ color:var(--tx3); text-align:center; padding:22px; font-family:"Segoe UI",sans-serif; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="dot">B</div>
+      <div><h1>ORB-BLOOMBERG · administración</h1><div class="sub" id="sub">cargando…</div></div>
+    </div>
+    <div class="ctr">
+      <span class="pill bad" id="status"><span class="led"></span><span id="statusTx">…</span></span>
+      <button onclick="act('/api/reconnect')">↻ reconectar</button>
+      <button class="warn" onclick="act('/api/ingest?op=stop')">parar</button>
+      <button class="go" onclick="act('/api/ingest?op=start')">arrancar</button>
+    </div>
+  </header>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="panel">
+    <div class="ph">
+      <div><h2>papeles suscritos</h2><div class="note">muestra todos los papeles activos — suscritos por un cliente (automático) o por el admin</div></div>
+      <div class="ctr">
+        <input type="text" id="symIn" placeholder="ticker Bloomberg · ej. IBM US Equity" style="width:248px;" onkeydown="if(event.key==='Enter')subscribe()"/>
+        <button class="go" onclick="subscribe()">+ suscribir</button>
+      </div>
+    </div>
+    <div class="tscroll" style="max-height:420px;">
+      <table><thead><tr>
+        <th>símbolo</th><th>bid</th><th>b.sz</th><th>ask</th><th>a.sz</th><th>spread</th><th>mid</th><th>last</th><th>vol</th><th>●</th><th></th>
+      </tr></thead><tbody id="tb"><tr><td colspan="11"><div class="empty">cargando…</div></td></tr></tbody></table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ph"><h2>log en vivo</h2><div class="ctr">
+      <button id="pauseBtn" onclick="paused=!paused;pauseBtn.textContent=paused?'reanudar':'pausar'">pausar</button>
+      <a href="/api/log?lines=5000" target="_blank"><button>descargar</button></a>
+    </div></div>
+    <div id="log"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let prevTicks=null, prevT=null, paused=false;
+const rows=new Map();
+const $=id=>document.getElementById(id);
+const fmt=n=>{ if(n===undefined||n===null||isNaN(n)) return '—'; const a=Math.abs(n); return a>=1e6?(n/1e6).toFixed(2)+'M':a>=1e3?(n/1e3).toFixed(1)+'K':(Number.isInteger(n)?n:n.toFixed(0)); };
+const px=n=>(!n||n===0||isNaN(n))?'—':(Math.abs(n)>=100?n.toFixed(2):n.toFixed(4).replace(/0+$/,'').replace(/\.$/,''));
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
+async function act(u){ try{ const j=await(await fetch(u,{method:'POST'})).json(); toast(j.msg||'ok'); }catch(e){ toast('error'); } }
+async function subscribe(){ const s=$('symIn').value.trim(); if(!s)return; await act('/api/subscribe?symbol='+encodeURIComponent(s)); $('symIn').value=''; }
+function uptime(ms){ const s=Math.floor(ms/1000); return [s/3600,s%3600/60,s%60].map(x=>String(Math.floor(x)).padStart(2,'0')).join(':'); }
+
+function flash(td,dir){ td.classList.remove('fu','fd'); void td.offsetWidth; td.classList.add(dir>0?'fu':'fd'); }
+
+function renderSec(sec){
+  const tb=$('tb'); const seen=new Set();
+  if(!sec.length && !rows.size){ tb.innerHTML='<tr><td colspan="11"><div class="empty">sin papeles suscritos — suscribe uno o conéctate desde un cliente</div></td></tr>'; return; }
+  if(rows.size===0 && sec.length) tb.innerHTML='';
+  for(const s of sec){
+    seen.add(s.topic);
+    const spread=(s.ask&&s.bid)?s.ask-s.bid:NaN, mid=(s.ask&&s.bid)?(s.ask+s.bid)/2:NaN;
+    let r=rows.get(s.topic);
+    if(!r){
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td class="sym"></td><td class="bid"></td><td class="muted"></td><td class="ask"></td><td class="muted"></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+      tb.appendChild(tr);
+      r={tr,c:tr.children,prev:{}}; rows.set(s.topic,r);
+      r.c[10].innerHTML='<button class="xbtn" title="desuscribir">×</button>';
+      r.c[10].firstChild.onclick=()=>act('/api/unsubscribe?topic='+encodeURIComponent(s.topic));
+    }
+    const c=r.c, p=r.prev;
+    c[0].textContent=s.symbol||s.topic;
+    if(p.bid!==s.bid){ c[1].textContent=px(s.bid); if(p.bid!==undefined&&s.bid)flash(c[1],s.bid-p.bid); p.bid=s.bid; }
+    c[2].textContent=fmt(s.bidSize);
+    if(p.ask!==s.ask){ c[3].textContent=px(s.ask); if(p.ask!==undefined&&s.ask)flash(c[3],-(s.ask-p.ask)); p.ask=s.ask; }
+    c[4].textContent=fmt(s.askSize);
+    c[5].textContent=isNaN(spread)?'—':px(spread); c[5].className=spread<0?'ask':'';
+    c[6].textContent=isNaN(mid)?'—':px(mid); c[6].className='muted';
+    if(p.last!==s.last){ c[7].textContent=px(s.last); c[7].className=(s.last>=mid?'bid':'ask'); if(p.last!==undefined&&s.last)flash(c[7],s.last-p.last); p.last=s.last; }
+    c[8].textContent=fmt(s.volume);
+    c[9].innerHTML=s.ready?'<span class="bid">●</span>':'<span class="muted">○</span>';
+  }
+  for(const [topic,r] of rows){ if(!seen.has(topic)){ r.tr.remove(); rows.delete(topic); } }
+}
+
+async function tick(){
+  try{
+    const [st,mt,sec]=await Promise.all([fetch('/api/status').then(r=>r.json()),fetch('/api/metrics').then(r=>r.json()),fetch('/api/securities').then(r=>r.json())]);
+    $('sub').innerHTML='Bloomberg '+st.host+':'+st.port+(st.simulador?' · SIMULADOR':'')+' &nbsp;·&nbsp; <b style="color:var(--blue)">clientes proto &rarr; '+st.nettyIp+':'+st.nettyPort+'</b> &nbsp;·&nbsp; uptime '+uptime(st.uptimeMs);
+    const ok=st.connected; $('status').className='pill '+(ok?'ok':'bad'); $('statusTx').textContent=ok?(st.simulador?'simulador':'conectado'):'desconectado';
+    const now=Date.now(); let tps=0; if(prevTicks!==null&&now>prevT) tps=Math.max(0,(mt.ticks-prevTicks)/((now-prevT)/1000)); prevTicks=mt.ticks; prevT=now;
+    const cards=[['ticks/s',Math.round(tps)],['total ticks',fmt(mt.ticks)],['papeles',mt.papeles],['suscriptores',mt.subscribers],['out writes',fmt(mt.outboundWrites)],['skipped',fmt(mt.outboundSkipped)],['evicted',fmt(mt.outboundEvicted)],['cola',mt.eventBusQueue]];
+    $('cards').innerHTML=cards.map(c=>'<div class="card"><div class="lab">'+c[0]+'</div><div class="val">'+c[1]+'</div></div>').join('');
+    renderSec(sec);
+  }catch(e){ $('statusTx').textContent='sin conexión al server'; $('status').className='pill bad'; }
+}
+async function pollLog(){
+  if(paused) return;
+  try{
+    const txt=await fetch('/api/log?lines=300').then(r=>r.text());
+    const el=$('log'), atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<50;
+    el.innerHTML=txt.split('\n').map(line=>{
+      let l=line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)/,'<span class="t">$1</span>');
+      if(/CONECTADO|DATA OK/.test(l)) return '<span class="ok">'+l+'</span>';
+      if(/\[WARN\]|Failure|FALLO|AVISO/.test(l)) return '<span class="warn">'+l+'</span>';
+      if(/\[ERROR\]|Exception|error/.test(l)) return '<span class="err">'+l+'</span>';
+      return l;
+    }).join('\n');
+    if(atBottom) el.scrollTop=el.scrollHeight;
+  }catch(e){}
+}
+tick(); pollLog(); setInterval(tick,1500); setInterval(pollLog,2500);
+</script>
+</body>
+</html>
