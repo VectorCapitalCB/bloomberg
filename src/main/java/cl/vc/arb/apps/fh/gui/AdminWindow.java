@@ -4,6 +4,9 @@ import akka.actor.ActorRef;
 import cl.vc.arb.apps.fh.MainApp;
 import cl.vc.arb.apps.fh.ingest.Bar;
 import cl.vc.arb.apps.fh.ingest.BloombergGateway;
+import cl.vc.arb.apps.fh.notif.Notification;
+import cl.vc.arb.apps.fh.notif.NotificationCenter;
+import cl.vc.arb.apps.fh.notif.NotificationType;
 import cl.vc.arb.apps.fh.ss.SellSideManager;
 import cl.vc.arb.apps.fh.utils.BookSnapshot;
 import cl.vc.module.protocolbuff.mkd.MarketDataMessage;
@@ -57,6 +60,16 @@ public class AdminWindow {
     private ChartPanel chart;
     private String chartInterval = "DAILY";
     private volatile String chartKey = "";
+
+    private ToastManager toasts;
+    private DefaultListModel<Notification> notifModel;
+    private JList<Notification> notifList;
+
+    private JPanel bottomContent;
+    private CardLayout bottomCards;
+    private boolean bottomExpanded = false;
+    private String bottomCurrent = "log";
+    private JToggleButton tabLog, tabNotif;
 
     private long prevTicks = -1, prevTs = 0;
     private final Map<String, double[]> prevVals = new HashMap<>();
@@ -119,12 +132,20 @@ public class AdminWindow {
         body.setBorder(BorderFactory.createEmptyBorder(0, 14, 0, 14));
         body.add(buildCards(), BorderLayout.NORTH);
         body.add(buildCenter(), BorderLayout.CENTER);
-        body.add(buildLog(), BorderLayout.SOUTH);
+        body.add(buildBottom(), BorderLayout.SOUTH);
         root.add(body, BorderLayout.CENTER);
 
         frame.setContentPane(root);
         frame.setVisible(true);
         setupTray();
+
+        // Toasts abajo-derecha + refresco de la pestaña de notificaciones en cada evento.
+        toasts = new ToastManager(frame);
+        NotificationCenter.get().addListener(n -> {
+            toasts.show(n);
+            SwingUtilities.invokeLater(this::refreshNotifs);
+        });
+        refreshNotifs();
 
         new Timer(1000, e -> refresh()).start();
         new Timer(2000, e -> refreshLog()).start();
@@ -163,16 +184,33 @@ public class AdminWindow {
         left.add(statusPill);
         h.add(left, BorderLayout.WEST);
 
+        return h;
+    }
+
+    /** Botones de control (reconectar/parar/arrancar/actualizar). Se ubican abajo a la derecha. */
+    private JPanel buildControls() {
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 7, 0));
         btns.setOpaque(false);
-        btns.add(btn("reconectar", () -> { BloombergGateway g = MainApp.getBloombergGateway(); if (g != null) { g.stop(); g.start(); } }, "reconectando"));
-        btns.add(btn("parar", () -> { BloombergGateway g = MainApp.getBloombergGateway(); if (g != null) g.stop(); }, "ingesta detenida"));
-        btns.add(btn("arrancar", () -> { BloombergGateway g = MainApp.getBloombergGateway(); if (g != null) g.start(); }, "ingesta iniciada"));
+        btns.add(btn("reconectar", () -> {
+            BloombergGateway g = MainApp.getBloombergGateway();
+            NotificationCenter.get().publish(NotificationType.DESCONEXION, "Bloomberg", "reconectando sesión…");
+            if (g != null) { g.stop(); g.start(); }
+            NotificationCenter.get().publish(NotificationType.CONEXION, "Bloomberg", "sesión restablecida");
+        }, "reconectando"));
+        btns.add(btn("parar", () -> {
+            BloombergGateway g = MainApp.getBloombergGateway();
+            if (g != null) g.stop();
+            NotificationCenter.get().publish(NotificationType.STOP, "Ingesta", "ingesta detenida por el usuario");
+        }, "ingesta detenida"));
+        btns.add(btn("arrancar", () -> {
+            BloombergGateway g = MainApp.getBloombergGateway();
+            if (g != null) g.start();
+            NotificationCenter.get().publish(NotificationType.CONEXION, "Ingesta", "ingesta iniciada");
+        }, "ingesta iniciada"));
         JButton bUpd = new JButton("actualizar");
         bUpd.addActionListener(e -> checkUpdate(true));
         btns.add(bUpd);
-        h.add(btns, BorderLayout.EAST);
-        return h;
+        return btns;
     }
 
     private JComponent buildCards() {
@@ -344,6 +382,147 @@ public class AdminWindow {
             price = close;
         }
         return out;
+    }
+
+    /**
+     * Panel inferior plegable: por defecto solo se ven las dos solapas ("log en vivo" /
+     * "notificaciones"). Al hacer clic en una se despliega su contenido; clic en la activa lo contrae.
+     */
+    private JComponent buildBottom() {
+        JPanel container = new JPanel(new BorderLayout(0, 6));
+        container.setOpaque(false);
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+
+        JPanel tabsLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        tabsLeft.setOpaque(false);
+        tabLog = makeTab("log en vivo");
+        tabNotif = makeTab("notificaciones");
+        tabLog.addActionListener(e -> toggleBottom("log"));
+        tabNotif.addActionListener(e -> toggleBottom("notif"));
+        tabsLeft.add(tabLog);
+        tabsLeft.add(tabNotif);
+
+        header.add(tabsLeft, BorderLayout.WEST);
+        header.add(buildControls(), BorderLayout.EAST);
+        container.add(header, BorderLayout.NORTH);
+
+        bottomCards = new CardLayout();
+        bottomContent = new JPanel(bottomCards);
+        bottomContent.setOpaque(false);
+        bottomContent.add(buildLog(), "log");
+        bottomContent.add(buildNotifs(), "notif");
+        bottomContent.setVisible(false); // arranca contraido
+        container.add(bottomContent, BorderLayout.CENTER);
+
+        return container;
+    }
+
+    private JToggleButton makeTab(String text) {
+        JToggleButton b = new JToggleButton("▸  " + text);
+        b.setFocusable(false);
+        b.setFont(b.getFont().deriveFont(Font.BOLD, 12f));
+        return b;
+    }
+
+    /** Despliega/contrae el cajon inferior y refresca el estado visual de las solapas. */
+    private void toggleBottom(String card) {
+        if (bottomExpanded && bottomCurrent.equals(card)) {
+            bottomExpanded = false;
+            bottomContent.setVisible(false);
+        } else {
+            bottomExpanded = true;
+            bottomCurrent = card;
+            bottomCards.show(bottomContent, card);
+            bottomContent.setVisible(true);
+        }
+        boolean logOpen = bottomExpanded && bottomCurrent.equals("log");
+        boolean notifOpen = bottomExpanded && bottomCurrent.equals("notif");
+        tabLog.setSelected(logOpen);
+        tabNotif.setSelected(notifOpen);
+        tabLog.setText((logOpen ? "▾  " : "▸  ") + "log en vivo");
+        tabNotif.setText((notifOpen ? "▾  " : "▸  ") + "notificaciones");
+        if (frame != null) {
+            frame.revalidate();
+            frame.repaint();
+        }
+    }
+
+    private JComponent buildNotifs() {
+        notifModel = new DefaultListModel<>();
+        notifList = new JList<>(notifModel);
+        notifList.setBackground(new Color(0x0d1117));
+        notifList.setFixedCellHeight(40);
+        notifList.setCellRenderer(new NotifRenderer());
+
+        JScrollPane sc = new JScrollPane(notifList);
+        sc.getViewport().setBackground(new Color(0x0d1117));
+        sc.setBorder(BorderFactory.createLineBorder(BD, 1, true));
+        sc.setPreferredSize(new Dimension(1040, 200));
+
+        JPanel p = new JPanel(new BorderLayout(0, 6));
+        p.setOpaque(false);
+
+        JPanel bar = new JPanel(new BorderLayout());
+        bar.setOpaque(false);
+        JLabel t = new JLabel("historial (persistido en Redis)");
+        t.setForeground(TX2);
+        JButton bClear = new JButton("limpiar vista");
+        bClear.addActionListener(e -> { if (notifModel != null) notifModel.clear(); });
+        bar.add(t, BorderLayout.WEST);
+        JPanel rb = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        rb.setOpaque(false);
+        rb.add(bClear);
+        bar.add(rb, BorderLayout.EAST);
+
+        p.add(bar, BorderLayout.NORTH);
+        p.add(sc, BorderLayout.CENTER);
+        return p;
+    }
+
+    private void refreshNotifs() {
+        if (notifModel == null) return;
+        notifModel.clear();
+        for (Notification n : NotificationCenter.get().snapshot()) {
+            notifModel.addElement(n);
+        }
+    }
+
+    private static Color notifColor(NotificationType t) {
+        switch (t) {
+            case CONEXION: return new Color(0x3fd35f);
+            case DESCONEXION:
+            case STOP: return new Color(0xff5b52);
+            case ACTUALIZACION: return new Color(0xfa8c00);
+            case LATENCIA: return new Color(0xe3b341);
+            default: return new Color(0x58a6ff);
+        }
+    }
+
+    final class NotifRenderer extends DefaultListCellRenderer {
+        private final java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("HH:mm:ss");
+
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                      boolean sel, boolean foc) {
+            super.getListCellRendererComponent(list, value, index, sel, foc);
+            Notification n = (Notification) value;
+            String color = String.format("%06x", notifColor(n.type).getRGB() & 0xFFFFFF);
+            String time = fmt.format(new java.util.Date(n.ts));
+            setText("<html><span style='color:#" + color + "'>● " + n.type + "</span>&nbsp;&nbsp;<b>"
+                    + esc(n.title) + "</b> — " + esc(n.message)
+                    + "&nbsp;&nbsp;<span style='color:#5d6b7a'>" + time + "</span></html>");
+            setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 12));
+            setForeground(TX);
+            setBackground(sel ? new Color(0x213044) : (index % 2 == 0 ? ROW_A : ROW_B));
+            return this;
+        }
+
+        private String esc(String s) {
+            if (s == null) return "";
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        }
     }
 
     private JComponent buildLog() {
@@ -523,6 +702,8 @@ public class AdminWindow {
                     if (manual) info("Estás en la última versión (" + cl.vc.arb.apps.fh.update.Updater.current() + ").");
                     return;
                 }
+                NotificationCenter.get().publish(NotificationType.ACTUALIZACION, "Actualización",
+                        "versión nueva disponible: " + nv + " (actual " + cl.vc.arb.apps.fh.update.Updater.current() + ")");
                 int r = JOptionPane.showConfirmDialog(frame,
                         "Hay una versión nueva: " + nv + "   (tienes " + cl.vc.arb.apps.fh.update.Updater.current() + ").\n"
                                 + "Se descargará, se cerrará el app y se reabrirá actualizado.\n¿Actualizar ahora?",

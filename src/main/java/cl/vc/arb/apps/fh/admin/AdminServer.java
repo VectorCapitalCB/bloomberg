@@ -178,14 +178,16 @@ public class AdminServer {
 
     private void actionReconnect(HttpExchange ex) throws IOException {
         BloombergGateway gw = MainApp.getBloombergGateway();
-        if (gw == null) {
-            json(ex, "{\"ok\":false,\"msg\":\"sin ingesta Bloomberg (¿simulador?)\"}");
-            return;
-        }
         try {
-            gw.stop();
-            gw.start();
+            cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                    cl.vc.arb.apps.fh.notif.NotificationType.DESCONEXION, "Bloomberg", "reconectando sesión…");
+            if (gw != null) {
+                gw.stop();
+                gw.start();
+            }
             log.info("admin: reconexion Bloomberg solicitada");
+            cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                    cl.vc.arb.apps.fh.notif.NotificationType.CONEXION, "Bloomberg", "sesión restablecida");
             json(ex, "{\"ok\":true,\"msg\":\"reconectando\"}");
         } catch (Exception e) {
             json(ex, "{\"ok\":false,\"msg\":\"" + esc(e.getMessage()) + "\"}");
@@ -195,17 +197,17 @@ public class AdminServer {
     private void actionIngest(HttpExchange ex) throws IOException {
         String op = param(ex, "op", "");
         BloombergGateway gw = MainApp.getBloombergGateway();
-        if (gw == null) {
-            json(ex, "{\"ok\":false,\"msg\":\"sin ingesta Bloomberg\"}");
-            return;
-        }
         try {
             if ("stop".equals(op)) {
-                gw.stop();
+                if (gw != null) gw.stop();
                 log.info("admin: ingesta DETENIDA");
+                cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                        cl.vc.arb.apps.fh.notif.NotificationType.STOP, "Ingesta", "ingesta detenida por el usuario");
             } else if ("start".equals(op)) {
-                gw.start();
+                if (gw != null) gw.start();
                 log.info("admin: ingesta INICIADA");
+                cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                        cl.vc.arb.apps.fh.notif.NotificationType.CONEXION, "Ingesta", "ingesta iniciada");
             }
             json(ex, "{\"ok\":true,\"msg\":\"" + esc(op) + "\"}");
         } catch (Exception e) {

@@ -38,3 +38,6 @@ build/
 
 # Bloomberg SDK binaries (no versionar; cada maquina de build los provee)
 lib/
+
+# config local de desarrollo (contiene secretos, NO commitear)
+config/LOCAL-WEB.properties

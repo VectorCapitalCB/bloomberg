@@ -78,6 +78,21 @@ public class MainApp {
     @Getter
     private static final java.util.concurrent.atomic.LongAdder bloombergTicks = new java.util.concurrent.atomic.LongAdder();
 
+    /** Epoch ms del ultimo dato recibido (tick real o update de simulador). 0 = sin data aun. */
+    private static final java.util.concurrent.atomic.AtomicLong lastDataMs = new java.util.concurrent.atomic.AtomicLong(0);
+
+    /** Marca que acaba de llegar/actualizarse data (lo llaman el actor de ticks y el simulador). */
+    public static void markData() {
+        lastDataMs.set(System.currentTimeMillis());
+    }
+
+    public static long getLastDataMs() {
+        return lastDataMs.get();
+    }
+
+    /** Estado del monitor de latencia: true si ya avisamos que la data esta estancada. */
+    private static volatile boolean staleNotified = false;
+
     /** Bloomberg ingest gateway (BLPAPI). Null en simulador o si el build no incluye bbg/ (-Pbloomberg). */
     @Getter
     @Setter
@@ -183,6 +198,9 @@ public class MainApp {
             TimeZone.setDefault(TimeZone.getTimeZone(zoneId));
 
             system = ActorSystem.create();
+
+            // Centro de notificaciones (persistencia Redis + toasts en el front).
+            cl.vc.arb.apps.fh.notif.NotificationCenter.get().init(properties);
 
             securityExchange = MarketDataMessage.SecurityExchangeMarketData.valueOf(properties.getProperty("securityExchange"));
 
@@ -295,6 +313,51 @@ public class MainApp {
         }, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
 
         log.info("health diagnostics enabled intervalMs={}", intervalMs);
+
+        startLatencyMonitor();
+    }
+
+    /**
+     * Monitor de latencia/staleness con Bloomberg: si estamos conectados, hay suscripciones y no
+     * llega data hace mas de {@code bloomberg.stale.threshold.ms}, publica una alerta de LATENCIA;
+     * cuando la data se normaliza, avisa la recuperacion. Solo aplica con ingesta en vivo.
+     */
+    private static void startLatencyMonitor() {
+        boolean enabled = Boolean.parseBoolean(properties.getProperty("bloomberg.latency.monitor.enabled", "true"));
+        if (!enabled) {
+            return;
+        }
+        long threshold = Long.parseLong(properties.getProperty("bloomberg.stale.threshold.ms", "8000"));
+        long check = Long.parseLong(properties.getProperty("bloomberg.latency.check.ms", "3000"));
+
+        DIAGNOSTICS.scheduleAtFixedRate(() -> {
+            try {
+                boolean live = bloombergGateway != null && bloombergGateway.isConnected();
+                if (!live || bookHasmap.isEmpty()) {
+                    return;
+                }
+                long last = lastDataMs.get();
+                if (last == 0) {
+                    return; // todavia no llega el primer dato
+                }
+                long gap = System.currentTimeMillis() - last;
+                if (gap > threshold && !staleNotified) {
+                    staleNotified = true;
+                    cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                            cl.vc.arb.apps.fh.notif.NotificationType.LATENCIA, "Latencia Bloomberg",
+                            "sin data hace " + (gap / 1000) + "s (¿lag o feed caido?)");
+                } else if (gap <= threshold && staleNotified) {
+                    staleNotified = false;
+                    cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                            cl.vc.arb.apps.fh.notif.NotificationType.CONEXION, "Latencia Bloomberg",
+                            "data normalizada");
+                }
+            } catch (Exception e) {
+                log.debug("latency monitor error: {}", e.getMessage());
+            }
+        }, check, check, TimeUnit.MILLISECONDS);
+
+        log.info("latency monitor enabled thresholdMs={} checkMs={}", threshold, check);
     }
 
     public static void suscribe(String id, ActorRef actorRef) {

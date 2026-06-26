@@ -25,6 +25,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -64,36 +68,111 @@ public class BloombergSession implements BloombergGateway {
     private final Map<Long, List<String>> fieldsByCid = new ConcurrentHashMap<>();
     private final AtomicLong cidSeq = new AtomicLong(1);
 
+    // Auto-reconexion: watchdog que reabre la sesion si se cae (Terminal cerrada/reabierta, bbcomm, etc.)
+    private ScheduledExecutorService reconnectExec;
+    private final AtomicBoolean watchdogStarted = new AtomicBoolean(false);
+
     public BloombergSession(Properties properties) {
         this.properties = properties;
     }
 
     @Override
     public void start() {
+        openSession();
+        startReconnectWatchdog();
+    }
+
+    /** Abre (o reabre) la sesion de streaming y re-suscribe todo lo que haya en el registro. */
+    private synchronized boolean openSession() {
+        String host = properties.getProperty("bloomberg.host", "localhost");
+        int port = Integer.parseInt(properties.getProperty("bloomberg.port", "8194"));
         try {
-            String host = properties.getProperty("bloomberg.host", "localhost");
-            int port = Integer.parseInt(properties.getProperty("bloomberg.port", "8194"));
+            // Cierra una sesion previa antes de recrear (reconexion).
+            if (session != null) {
+                try {
+                    session.stop();
+                } catch (Exception ignore) {
+                    // best-effort
+                }
+            }
 
             SessionOptions options = new SessionOptions();
             options.setServerHost(host);
             options.setServerPort(port);
+            // BLPAPI reintenta solo y recupera suscripciones cuando bbcomm/Terminal vuelve.
+            options.setAutoRestartOnDisconnection(true);
 
             session = new Session(options, this::processEvent);
 
             if (!session.start()) {
+                connected = false;
                 log.error("bloomberg: no se pudo iniciar la sesion BLPAPI {}:{} (¿Terminal corriendo?)", host, port);
-                return;
+                return false;
             }
             if (!session.openService(MKTDATA_SERVICE)) {
+                connected = false;
                 log.error("bloomberg: no se pudo abrir el servicio {}", MKTDATA_SERVICE);
-                return;
+                return false;
             }
             connected = true;
             log.info("bloomberg session OK {}:{} service={}", host, port, MKTDATA_SERVICE);
+            resubscribeAll();
+            cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                    cl.vc.arb.apps.fh.notif.NotificationType.CONEXION, "Bloomberg",
+                    "conectado a la Terminal " + host + ":" + port);
+            return true;
         } catch (Throwable t) {
             // Throwable: tambien atrapa UnsatisfiedLinkError si falta blpapi3_64.dll.
+            connected = false;
             log.error("bloomberg start error (¿falta blpapi3_64.dll en el PATH?)", t);
+            cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                    cl.vc.arb.apps.fh.notif.NotificationType.DESCONEXION, "Bloomberg",
+                    "no se pudo conectar: " + t.getMessage());
+            return false;
         }
+    }
+
+    /** Re-emite a la sesion BLPAPI todas las suscripciones conocidas (tras una reconexion). */
+    private void resubscribeAll() {
+        if (session == null || securityByCid.isEmpty()) {
+            return;
+        }
+        try {
+            SubscriptionList sl = new SubscriptionList();
+            for (Map.Entry<Long, String> e : securityByCid.entrySet()) {
+                List<String> fields = fieldsByCid.getOrDefault(e.getKey(), List.of());
+                sl.add(new Subscription(e.getValue(), fields, new CorrelationID(e.getKey())));
+            }
+            session.subscribe(sl);
+            log.info("bloomberg re-suscritas {} securities tras reconexion", sl.size());
+        } catch (Exception ex) {
+            log.warn("bloomberg resubscribeAll error: {}", ex.getMessage());
+        }
+    }
+
+    /** Arranca el watchdog: si la sesion no esta conectada, intenta reabrirla periodicamente. */
+    private void startReconnectWatchdog() {
+        boolean enabled = Boolean.parseBoolean(properties.getProperty("bloomberg.reconnect.enabled", "true"));
+        if (!enabled || !watchdogStarted.compareAndSet(false, true)) {
+            return;
+        }
+        long interval = Long.parseLong(properties.getProperty("bloomberg.reconnect.interval.ms", "5000"));
+        reconnectExec = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "bloomberg-reconnect");
+            t.setDaemon(true);
+            return t;
+        });
+        reconnectExec.scheduleWithFixedDelay(() -> {
+            try {
+                if (!connected) {
+                    log.warn("bloomberg watchdog: desconectado, reintentando reconexion…");
+                    openSession();
+                }
+            } catch (Exception e) {
+                log.debug("bloomberg watchdog error: {}", e.getMessage());
+            }
+        }, interval, interval, TimeUnit.MILLISECONDS);
+        log.info("bloomberg auto-reconexion activada intervalMs={}", interval);
     }
 
     @Override
@@ -171,6 +250,12 @@ public class BloombergSession implements BloombergGateway {
     @Override
     public void stop() {
         connected = false;
+        // Stop deliberado: apaga el watchdog para que NO reconecte solo (sí lo re-arma start()).
+        if (reconnectExec != null) {
+            reconnectExec.shutdownNow();
+            reconnectExec = null;
+            watchdogStarted.set(false);
+        }
         try {
             if (session != null) {
                 session.stop();
@@ -381,8 +466,24 @@ public class BloombergSession implements BloombergGateway {
                         dispatch(msg);
                     }
                     break;
-                case Event.EventType.Constants.SUBSCRIPTION_STATUS:
                 case Event.EventType.Constants.SESSION_STATUS:
+                    for (Message msg : event) {
+                        log.info("bloomberg {} -> {}", event.eventType(), msg.messageType());
+                        String mt = String.valueOf(msg.messageType());
+                        if (mt.contains("SessionConnectionDown") || mt.contains("SessionTerminated")) {
+                            connected = false;
+                            cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                                    cl.vc.arb.apps.fh.notif.NotificationType.DESCONEXION, "Bloomberg",
+                                    "sesión caída (" + mt + ")");
+                        } else if (mt.contains("SessionConnectionUp") || mt.contains("SessionStarted")) {
+                            connected = true;
+                            cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                                    cl.vc.arb.apps.fh.notif.NotificationType.CONEXION, "Bloomberg",
+                                    "sesión activa (" + mt + ")");
+                        }
+                    }
+                    break;
+                case Event.EventType.Constants.SUBSCRIPTION_STATUS:
                 case Event.EventType.Constants.SERVICE_STATUS:
                     for (Message msg : event) {
                         log.info("bloomberg {} -> {}", event.eventType(), msg.messageType());

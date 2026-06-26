@@ -181,6 +181,7 @@ public class InversorBloombergToProto extends AbstractActor {
     private void onBbgTick(BbgTick tick) {
         try {
             MainApp.getBloombergTicks().increment();
+            MainApp.markData();
             if (!firstTickLogged) {
                 firstTickLogged = true;
                 log.info("DATA OK topic={} security='{}' (primer tick recibido)", id,
@@ -335,6 +336,7 @@ public class InversorBloombergToProto extends AbstractActor {
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 SimulatorEngine.populate(bookSnapshot, finalRef);
+                MainApp.markData();
 
                 if (!bookSnapshot.getTrades().isEmpty()) {
                     MarketDataMessage.Trade last = bookSnapshot.getTrades()
