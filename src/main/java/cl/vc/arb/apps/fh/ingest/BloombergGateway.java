@@ -36,6 +36,24 @@ public interface BloombergGateway {
         return false;
     }
 
+    /**
+     * Pide historico OHLCV via {@code //blp/refdata} para dibujar el grafico de velas.
+     *
+     * <ul>
+     *   <li>{@code interval = "DAILY"} -> {@code HistoricalDataRequest} (velas diarias, fin de dia)</li>
+     *   <li>{@code interval} numerico en minutos ({@code "1"}, {@code "5"}, {@code "15"}, {@code "60"})
+     *       -> {@code IntradayBarRequest} (velas intradia)</li>
+     * </ul>
+     *
+     * @param bbgSecurity ticker Bloomberg, p.ej. "USDBRL Curncy", "IBM US Equity"
+     * @param interval    "DAILY" o minutos como texto
+     * @param points      maximo de velas a devolver (las mas recientes)
+     * @return barras en orden cronologico; lista vacia si no hay sesion o el build no incluye bbg/
+     */
+    default List<Bar> history(String bbgSecurity, String interval, int points) {
+        return List.of();
+    }
+
     /** Cierra la sesion BLPAPI. */
     default void stop() {
     }

@@ -6,7 +6,7 @@
 
 	<groupId>cl.vc.arb</groupId>
 	<artifactId>ORB-BLOOMBERG</artifactId>
-	<version>1.2</version>
+	<version>1.8</version>
 	<name>ORB-BLOOMBERG</name>
 
 	<properties>
@@ -133,6 +133,12 @@
 			<groupId>ch.qos.logback</groupId>
 			<artifactId>logback-classic</artifactId>
 			<version>1.5.18</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.formdev</groupId>
+			<artifactId>flatlaf</artifactId>
+			<version>3.5.4</version>
 		</dependency>
 	</dependencies>
 

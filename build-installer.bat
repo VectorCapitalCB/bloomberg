@@ -15,7 +15,7 @@ REM ============================================================
 setlocal
 cd /d "%~dp0"
 
-set APP_VERSION=1.2
+set APP_VERSION=1.8
 set VENDOR=VectorCapital
 set UPGRADE_UUID=7b9d2f4a-3c61-4e8b-a2d5-1f0e6c8b4a93
 
@@ -54,6 +54,7 @@ jpackage ^
   --main-class cl.vc.arb.apps.fh.Bootstrap ^
   --icon "icon\orb.ico" ^
   --java-options "-Djava.library.path=$APPDIR" ^
+  --java-options "-Dapp.version=%APP_VERSION%" ^
   --win-upgrade-uuid %UPGRADE_UUID% ^
   --win-menu ^
   --win-shortcut ^

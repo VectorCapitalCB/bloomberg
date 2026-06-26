@@ -212,14 +212,22 @@ public class MainApp {
 
             new Thread(nettyProtobufServer).start();
 
-            if (Boolean.parseBoolean(properties.getProperty("admin.enabled", "true"))) {
+            if (Boolean.parseBoolean(properties.getProperty("admin.enabled", "false"))) {
                 int adminPort = Integer.parseInt(properties.getProperty("admin.port", "8090"));
                 adminServer = new cl.vc.arb.apps.fh.admin.AdminServer(adminPort);
                 adminServer.start();
-                if (Boolean.parseBoolean(properties.getProperty("admin.open.browser", "true"))) {
-                    openAdmin(adminPort);
+            }
+
+            if (Boolean.parseBoolean(properties.getProperty("gui.enabled", "true"))
+                    && !java.awt.GraphicsEnvironment.isHeadless()) {
+                try {
+                    new cl.vc.arb.apps.fh.gui.AdminWindow().show();
+                } catch (Throwable t) {
+                    log.warn("no se pudo abrir la ventana de administracion", t);
                 }
             }
+
+            ensureDesktopShortcut();
 
             start();
             startDiagnostics();
@@ -229,17 +237,24 @@ public class MainApp {
         }
     }
 
-    /** Abre el panel admin en el navegador (al hacer doble clic se ve algo, no queda "sin abrir"). */
-    private static void openAdmin(int port) {
+    /** Crea el acceso directo en el escritorio (icono naranja) si no existe. Solo corre como app instalada. */
+    private static void ensureDesktopShortcut() {
         try {
-            if (!java.awt.GraphicsEnvironment.isHeadless()
-                    && java.awt.Desktop.isDesktopSupported()
-                    && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
-                java.awt.Desktop.getDesktop().browse(new java.net.URI("http://localhost:" + port + "/"));
-                log.info("panel admin abierto en el navegador -> http://localhost:{}/", port);
-            }
+            String appPath = System.getProperty("jpackage.app-path");
+            if (appPath == null || appPath.isBlank()) return;
+            String ps = "$d=[Environment]::GetFolderPath('Desktop');"
+                    + "$p=Join-Path $d 'ORB-BLOOMBERG.lnk';"
+                    + "if(-not (Test-Path $p)){"
+                    + "$w=New-Object -ComObject WScript.Shell;"
+                    + "$s=$w.CreateShortcut($p);"
+                    + "$s.TargetPath='" + appPath + "';"
+                    + "$s.IconLocation='" + appPath + ",0';"
+                    + "$s.WorkingDirectory=[System.IO.Path]::GetDirectoryName('" + appPath + "');"
+                    + "$s.Save()}";
+            new ProcessBuilder("powershell", "-WindowStyle", "Hidden", "-NoProfile", "-Command", ps).start();
+            log.info("acceso directo del escritorio verificado");
         } catch (Throwable t) {
-            log.debug("no se pudo abrir el navegador automaticamente: {}", t.getMessage());
+            log.debug("no se pudo crear el acceso directo: {}", t.getMessage());
         }
     }
 
