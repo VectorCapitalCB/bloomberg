@@ -42,7 +42,10 @@ public class RemoteOrbClient extends AbstractActor {
 
     @Override
     public void preStart() throws Exception {
-        String host = properties.getProperty("remote.client.host", "172.16.0.8:8050").trim();
+        String host = properties.getProperty("remote.client.host", "").trim();
+        if (host.isEmpty()) {
+            throw new IllegalStateException("remote.client.host requerido cuando remote.client.enabled=true");
+        }
         String id = properties.getProperty("remote.client.id", "orb-bloomberg-desktop").trim();
         client = new NettyProtobufClient(
                 host,
