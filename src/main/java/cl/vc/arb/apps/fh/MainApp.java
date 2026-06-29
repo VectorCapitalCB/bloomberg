@@ -202,7 +202,7 @@ public class MainApp {
             // Centro de notificaciones (persistencia Redis + toasts en el front).
             cl.vc.arb.apps.fh.notif.NotificationCenter.get().init(properties);
 
-            securityExchange = MarketDataMessage.SecurityExchangeMarketData.valueOf(properties.getProperty("securityExchange"));
+            securityExchange = resolveSecurityExchange(properties.getProperty("securityExchange"));
 
             sellSideManager = system.actorOf(SellSideManager.props(properties, eventBus));
             clientManager = system.actorOf(ClientManager.props());
@@ -230,6 +230,8 @@ public class MainApp {
 
             new Thread(nettyProtobufServer).start();
 
+            primeConfiguredSymbols();
+
             if (Boolean.parseBoolean(properties.getProperty("admin.enabled", "false"))) {
                 int adminPort = Integer.parseInt(properties.getProperty("admin.port", "8090"));
                 adminServer = new cl.vc.arb.apps.fh.admin.AdminServer(adminPort);
@@ -245,34 +247,12 @@ public class MainApp {
                 }
             }
 
-            ensureDesktopShortcut();
-
             start();
             startDiagnostics();
+            autoSubscribeConfiguredSymbols();
 
         } catch (Exception ex) {
             log.error(ex.getMessage(), ex);
-        }
-    }
-
-    /** Crea el acceso directo en el escritorio (icono naranja) si no existe. Solo corre como app instalada. */
-    private static void ensureDesktopShortcut() {
-        try {
-            String appPath = System.getProperty("jpackage.app-path");
-            if (appPath == null || appPath.isBlank()) return;
-            String ps = "$d=[Environment]::GetFolderPath('Desktop');"
-                    + "$p=Join-Path $d 'ORB-BLOOMBERG.lnk';"
-                    + "if(-not (Test-Path $p)){"
-                    + "$w=New-Object -ComObject WScript.Shell;"
-                    + "$s=$w.CreateShortcut($p);"
-                    + "$s.TargetPath='" + appPath + "';"
-                    + "$s.IconLocation='" + appPath + ",0';"
-                    + "$s.WorkingDirectory=[System.IO.Path]::GetDirectoryName('" + appPath + "');"
-                    + "$s.Save()}";
-            new ProcessBuilder("powershell", "-WindowStyle", "Hidden", "-NoProfile", "-Command", ps).start();
-            log.info("acceso directo del escritorio verificado");
-        } catch (Throwable t) {
-            log.debug("no se pudo crear el acceso directo: {}", t.getMessage());
         }
     }
 
@@ -382,6 +362,80 @@ public class MainApp {
 
     public static int queued() {
         return Q.size();
+    }
+
+    /**
+     * Precarga los papeles bootstrap en memoria para que aparezcan en la grilla desde el arranque,
+     * incluso si Bloomberg/simulador aun no entrega ticks.
+     */
+    private static void primeConfiguredSymbols() {
+        for (MarketDataMessage.Subscribe sub : configuredBootstrapSubscriptions()) {
+            String topic = cl.vc.module.protocolbuff.generator.TopicGenerator.getTopicMKD(sub);
+            bookHasmap.putIfAbsent(topic, new BookSnapshot(topic, sub));
+            log.info("bootstrap primed symbol='{}' topic='{}'", sub.getSymbol(), topic);
+        }
+    }
+
+    /**
+     * Suscribe papeles bootstrap para que queden visibles en desktop/web y listos para clientes
+     * externos apenas la app arranca.
+     */
+    private static void autoSubscribeConfiguredSymbols() {
+        for (MarketDataMessage.Subscribe sub : configuredBootstrapSubscriptions()) {
+            sellSideManager.tell(new SellSideManager.Subscribe(sub, ActorRef.noSender()), ActorRef.noSender());
+            log.info("bootstrap auto-subscribe symbol='{}'", sub.getSymbol());
+        }
+    }
+
+    private static List<MarketDataMessage.Subscribe> configuredBootstrapSubscriptions() {
+        String configured = properties.getProperty("bootstrap.subscribe.symbols", "").trim();
+        if (configured.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Set<String> symbols = new LinkedHashSet<>();
+        for (String token : configured.split("[,;\\r\\n]+")) {
+            String symbol = token == null ? "" : token.trim();
+            if (!symbol.isEmpty()) {
+                symbols.add(symbol);
+            }
+        }
+        if (symbols.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<MarketDataMessage.Subscribe> subscriptions = new ArrayList<>();
+        int index = 1;
+        for (String symbol : symbols) {
+            subscriptions.add(MarketDataMessage.Subscribe.newBuilder()
+                    .setSymbol(symbol)
+                    .setId("bootstrap-" + index++)
+                    .setSecurityExchange(securityExchange)
+                    .setSettlType(RoutingMessage.SettlType.REGULAR)
+                    .setTrade(true)
+                    .setStatistic(true)
+                    .setBook(true)
+                    .setDepth(MarketDataMessage.Depth.TOP_OF_THE_BOOK)
+                    .build());
+        }
+        return subscriptions;
+    }
+
+    /**
+     * Compatibilidad con configs antiguas/nuevas: si el proto compartido todavia no trae
+     * BLOOMBERG_MKD, degradamos a NONE_MKD para no impedir el arranque.
+     */
+    private static MarketDataMessage.SecurityExchangeMarketData resolveSecurityExchange(String configured) {
+        String value = configured == null ? "" : configured.trim();
+        try {
+            return MarketDataMessage.SecurityExchangeMarketData.valueOf(value);
+        } catch (IllegalArgumentException ex) {
+            if ("BLOOMBERG_MKD".equalsIgnoreCase(value)) {
+                log.warn("securityExchange={} no existe en principal-module; usando NONE_MKD temporalmente", value);
+                return MarketDataMessage.SecurityExchangeMarketData.NONE_MKD;
+            }
+            throw ex;
+        }
     }
 
 }

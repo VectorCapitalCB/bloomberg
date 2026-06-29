@@ -10,7 +10,8 @@ cd /d "%~dp0"
 if not exist logs mkdir logs
 
 REM --- Ajusta estas dos rutas a tu instalacion ---
-set BLPAPI_VERSION=3.24.6-1
+set APP_VERSION=1.14
+set BLPAPI_VERSION=3.26.5.1
 set BLPAPI_DLL_DIR=C:\blp\DAPI
 
 set BLPAPI_JAR=%USERPROFILE%\.m2\repository\com\bloomberglp\blpapi\%BLPAPI_VERSION%\blpapi-%BLPAPI_VERSION%.jar
@@ -22,5 +23,5 @@ if not exist "%BLPAPI_JAR%" (
 )
 
 echo Arrancando ORB-BLOOMBERG (BLOOMBERG en vivo) ...
-java -Djava.library.path="%BLPAPI_DLL_DIR%" -cp "target\ORB-BLOOMBERG-1.0-fat.jar;%BLPAPI_JAR%" cl.vc.arb.apps.fh.MainApp config\BLOOMBERG.properties
+java -Djava.library.path="%BLPAPI_DLL_DIR%" -cp "target\ORB-BLOOMBERG-%APP_VERSION%-fat.jar;%BLPAPI_JAR%" cl.vc.arb.apps.fh.MainApp config\BLOOMBERG.properties
 endlocal

@@ -15,12 +15,10 @@ REM ============================================================
 setlocal
 cd /d "%~dp0"
 
-set APP_VERSION=1.8
+set APP_VERSION=1.14
 set VENDOR=VectorCapital
 set UPGRADE_UUID=7b9d2f4a-3c61-4e8b-a2d5-1f0e6c8b4a93
 
-set BLPAPI_VERSION=3.26.5.1
-set BLPAPI_JAR=%USERPROFILE%\.m2\repository\com\bloomberglp\blpapi\%BLPAPI_VERSION%\blpapi-%BLPAPI_VERSION%.jar
 REM dll para empaquetar dentro del .msi: si dejas el dll del SDK en .\lib\ se usa ese
 REM (util en una maquina de build SIN Bloomberg instalado); si no, busca la ruta tipica.
 set BLPAPI_DLL=C:\blp\DAPI\blpapi3_64.dll
@@ -34,7 +32,6 @@ echo [2/4] Preparando carpeta de input...
 if exist build\input rmdir /s /q build\input
 mkdir build\input
 copy /y "target\ORB-BLOOMBERG-%APP_VERSION%-fat.jar" build\input\ >nul
-if exist "%BLPAPI_JAR%" ( copy /y "%BLPAPI_JAR%" build\input\ >nul ) else ( echo [AVISO] no encontre %BLPAPI_JAR% )
 if exist "%BLPAPI_DLL%" ( copy /y "%BLPAPI_DLL%" build\input\ >nul ) else ( echo [AVISO] no encontre %BLPAPI_DLL% - el servicio lo necesita en runtime )
 if exist service ( copy /y service\*.bat build\input\ >nul )
 

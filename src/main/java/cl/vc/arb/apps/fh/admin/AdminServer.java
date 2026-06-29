@@ -225,7 +225,7 @@ public class AdminServer {
             MarketDataMessage.Subscribe sub = MarketDataMessage.Subscribe.newBuilder()
                     .setSymbol(symbol)
                     .setId("admin-" + symbol)
-                    .setSecurityExchange(MarketDataMessage.SecurityExchangeMarketData.BLOOMBERG_MKD)
+                    .setSecurityExchange(MainApp.securityExchange)
                     .setSettlType(RoutingMessage.SettlType.REGULAR)
                     .setTrade(true).setStatistic(true).setBook(true)
                     .setDepth(MarketDataMessage.Depth.TOP_OF_THE_BOOK)

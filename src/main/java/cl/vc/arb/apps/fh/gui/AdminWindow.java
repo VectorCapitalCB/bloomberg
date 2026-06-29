@@ -257,11 +257,21 @@ public class AdminWindow {
         JLabel pl = new JLabel("papel:");
         pl.setForeground(TX2);
         symField = new JTextField(28);
+        symField.setToolTipText("Ticker Bloomberg completo. Los papeles bootstrap quedan listados aunque aun no llegue feed.");
         symField.addActionListener(e -> doSubscribe());
         JButton bSub = new JButton("+ suscribir"); bSub.addActionListener(e -> doSubscribe());
         JButton bUns = new JButton("desuscribir sel."); bUns.addActionListener(e -> doUnsub());
         subRow.add(pl); subRow.add(symField); subRow.add(bSub); subRow.add(bUns);
-        p.add(subRow, BorderLayout.NORTH);
+
+        JLabel legend = new JLabel("○ pendiente de feed  • con snapshot");
+        legend.setForeground(TX3);
+        legend.setBorder(BorderFactory.createEmptyBorder(2, 4, 0, 0));
+
+        JPanel north = new JPanel(new BorderLayout(0, 4));
+        north.setOpaque(false);
+        north.add(subRow, BorderLayout.NORTH);
+        north.add(legend, BorderLayout.SOUTH);
+        p.add(north, BorderLayout.NORTH);
 
         model = new SecModel();
         table = new JTable(model);
@@ -753,7 +763,7 @@ public class AdminWindow {
         try {
             MarketDataMessage.Subscribe sub = MarketDataMessage.Subscribe.newBuilder()
                     .setSymbol(s).setId("gui-" + s)
-                    .setSecurityExchange(MarketDataMessage.SecurityExchangeMarketData.BLOOMBERG_MKD)
+                    .setSecurityExchange(MainApp.securityExchange)
                     .setSettlType(RoutingMessage.SettlType.REGULAR)
                     .setTrade(true).setStatistic(true).setBook(true)
                     .setDepth(MarketDataMessage.Depth.TOP_OF_THE_BOOK).build();
@@ -792,7 +802,22 @@ public class AdminWindow {
 
     private void onClose() {
         if (SystemTray.isSupported()) {
-            frame.setVisible(false);
+            Object[] options = {"Minimizar", "Salir"};
+            int choice = JOptionPane.showOptionDialog(frame,
+                    "ORB-BLOOMBERG sigue corriendo en segundo plano para mantener el redistribuidor activo.\n"
+                            + "Puedes minimizarlo a la bandeja o cerrarlo por completo.",
+                    "Cerrar ORB-BLOOMBERG",
+                    JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    options,
+                    options[0]);
+            if (choice == 1) {
+                System.exit(0);
+            }
+            if (choice == 0 || choice == JOptionPane.CLOSED_OPTION) {
+                frame.setVisible(false);
+            }
         } else if (JOptionPane.showConfirmDialog(frame,
                 "¿Cerrar ORB-BLOOMBERG? Se detiene el redistribuidor.", "Salir",
                 JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {

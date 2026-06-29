@@ -46,7 +46,7 @@ public final class Bootstrap {
             java.io.RandomAccessFile lockRaf = new java.io.RandomAccessFile(home.resolve("orb.lock").toFile(), "rw");
             if (lockRaf.getChannel().tryLock() == null) {
                 System.out.println("[Bootstrap] ORB-BLOOMBERG ya esta corriendo; abro el panel y salgo.");
-                openBrowser("http://localhost:8090/");
+                showAlreadyRunningMessage();
                 System.exit(0);
             }
             INSTANCE_LOCK = lockRaf;
@@ -74,11 +74,15 @@ public final class Bootstrap {
         }
     }
 
-    private static void openBrowser(String url) {
+    private static void showAlreadyRunningMessage() {
         try {
-            if (!java.awt.GraphicsEnvironment.isHeadless() && java.awt.Desktop.isDesktopSupported()
-                    && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
-                java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+            if (!java.awt.GraphicsEnvironment.isHeadless()) {
+                javax.swing.JOptionPane.showMessageDialog(
+                        null,
+                        "ORB-BLOOMBERG ya esta corriendo.\n"
+                                + "Si cerraste la ventana, probablemente quedo minimizado en la bandeja del sistema.",
+                        "ORB-BLOOMBERG",
+                        javax.swing.JOptionPane.INFORMATION_MESSAGE);
             }
         } catch (Throwable ignore) {
         }

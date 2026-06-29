@@ -106,11 +106,23 @@ public class BloombergSession implements BloombergGateway {
 
             if (!session.start()) {
                 connected = false;
+                try {
+                    session.stop();
+                } catch (Exception ignore) {
+                    // best-effort
+                }
+                session = null;
                 log.error("bloomberg: no se pudo iniciar la sesion BLPAPI {}:{} (¿Terminal corriendo?)", host, port);
                 return false;
             }
             if (!session.openService(MKTDATA_SERVICE)) {
                 connected = false;
+                try {
+                    session.stop();
+                } catch (Exception ignore) {
+                    // best-effort
+                }
+                session = null;
                 log.error("bloomberg: no se pudo abrir el servicio {}", MKTDATA_SERVICE);
                 return false;
             }
@@ -124,6 +136,7 @@ public class BloombergSession implements BloombergGateway {
         } catch (Throwable t) {
             // Throwable: tambien atrapa UnsatisfiedLinkError si falta blpapi3_64.dll.
             connected = false;
+            session = null;
             log.error("bloomberg start error (¿falta blpapi3_64.dll en el PATH?)", t);
             cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
                     cl.vc.arb.apps.fh.notif.NotificationType.DESCONEXION, "Bloomberg",
@@ -141,7 +154,7 @@ public class BloombergSession implements BloombergGateway {
             SubscriptionList sl = new SubscriptionList();
             for (Map.Entry<Long, String> e : securityByCid.entrySet()) {
                 List<String> fields = fieldsByCid.getOrDefault(e.getKey(), List.of());
-                sl.add(new Subscription(e.getValue(), fields, new CorrelationID(e.getKey())));
+                sl.add(new Subscription(e.getValue(), fields, new CorrelationID(e.getKey().longValue())));
             }
             session.subscribe(sl);
             log.info("bloomberg re-suscritas {} securities tras reconexion", sl.size());
@@ -178,30 +191,33 @@ public class BloombergSession implements BloombergGateway {
     @Override
     public synchronized void subscribe(String topic, String bbgSecurity, List<String> fields, ActorRef topicActor) {
         try {
-            if (session == null) {
-                log.warn("bloomberg subscribe ignorado (sesion no iniciada) security={}", bbgSecurity);
+            Long cid = cidBySecurity.get(bbgSecurity);
+            boolean isNew = cid == null;
+            if (cid == null) {
+                cid = cidSeq.getAndIncrement();
+                cidBySecurity.put(bbgSecurity, cid);
+                securityByCid.put(cid, bbgSecurity);
+                fieldsByCid.put(cid, fields);
+            }
+
+            actorsByCid.computeIfAbsent(cid, k -> ConcurrentHashMap.newKeySet()).add(topicActor);
+            cidByActor.put(topicActor, cid);
+
+            if (!connected || session == null) {
+                log.info("bloomberg subscribe PENDING security='{}' cid={} fanout={}", bbgSecurity, cid, actorsByCid.get(cid).size());
                 return;
             }
 
-            Long cid = cidBySecurity.get(bbgSecurity);
-            if (cid != null) {
-                actorsByCid.computeIfAbsent(cid, k -> ConcurrentHashMap.newKeySet()).add(topicActor);
-                cidByActor.put(topicActor, cid);
+            if (!isNew) {
                 log.info("bloomberg subscribe REUSE security='{}' cid={} fanout={}", bbgSecurity, cid, actorsByCid.get(cid).size());
                 return;
             }
 
-            long newCid = cidSeq.getAndIncrement();
-            cidBySecurity.put(bbgSecurity, newCid);
-            securityByCid.put(newCid, bbgSecurity);
-            fieldsByCid.put(newCid, fields);
-            actorsByCid.computeIfAbsent(newCid, k -> ConcurrentHashMap.newKeySet()).add(topicActor);
-            cidByActor.put(topicActor, newCid);
-
             SubscriptionList subscriptions = new SubscriptionList();
-            subscriptions.add(new Subscription(bbgSecurity, fields, new CorrelationID(newCid)));
+            subscriptions.add(new Subscription(bbgSecurity, fields, new CorrelationID(cid.longValue())));
             session.subscribe(subscriptions);
-            log.info("bloomberg subscribe NEW security='{}' cid={} fields={}", bbgSecurity, newCid, fields);
+            log.info("bloomberg subscribe ACTIVE security='{}' cid={} fields={} fanout={}",
+                    bbgSecurity, cid, fields, actorsByCid.get(cid).size());
 
         } catch (Exception e) {
             log.error("bloomberg subscribe error security='{}'", bbgSecurity, e);
@@ -229,7 +245,7 @@ public class BloombergSession implements BloombergGateway {
                 try {
                     if (session != null && sec != null) {
                         SubscriptionList sl = new SubscriptionList();
-                        sl.add(new Subscription(sec, fields == null ? List.of() : fields, new CorrelationID(cid)));
+                        sl.add(new Subscription(sec, fields == null ? List.of() : fields, new CorrelationID(cid.longValue())));
                         session.unsubscribe(sl);
                     }
                 } catch (Exception ex) {
@@ -468,15 +484,17 @@ public class BloombergSession implements BloombergGateway {
                     break;
                 case Event.EventType.Constants.SESSION_STATUS:
                     for (Message msg : event) {
-                        log.info("bloomberg {} -> {}", event.eventType(), msg.messageType());
+                        log.info("bloomberg {} -> {} {}", event.eventType(), msg.messageType(), describeStatusMessage(msg));
                         String mt = String.valueOf(msg.messageType());
-                        if (mt.contains("SessionConnectionDown") || mt.contains("SessionTerminated")) {
+                        if (mt.contains("SessionConnectionDown") || mt.contains("SessionTerminated")
+                                || mt.contains("SessionStartupFailure") || mt.contains("SessionStartFailure")) {
                             connected = false;
                             cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
                                     cl.vc.arb.apps.fh.notif.NotificationType.DESCONEXION, "Bloomberg",
                                     "sesión caída (" + mt + ")");
                         } else if (mt.contains("SessionConnectionUp") || mt.contains("SessionStarted")) {
                             connected = true;
+                            resubscribeAll();
                             cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
                                     cl.vc.arb.apps.fh.notif.NotificationType.CONEXION, "Bloomberg",
                                     "sesión activa (" + mt + ")");
@@ -498,7 +516,11 @@ public class BloombergSession implements BloombergGateway {
     }
 
     private void dispatch(Message msg) {
-        long cid = msg.correlationID().value();
+        Long cid = correlationIdValue(msg);
+        if (cid == null) {
+            log.debug("bloomberg subscription data sin CorrelationID numerico: {}", msg.messageType());
+            return;
+        }
         Set<ActorRef> actors = actorsByCid.get(cid);
         if (actors == null || actors.isEmpty()) {
             return;
@@ -548,5 +570,45 @@ public class BloombergSession implements BloombergGateway {
             log.debug("bloomberg extractFields error", e);
         }
         return eventType;
+    }
+
+    private String describeStatusMessage(Message msg) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            try {
+                Long cid = correlationIdValue(msg);
+                String security = securityByCid.get(cid);
+                if (security != null) {
+                    sb.append("security='").append(security).append("' ");
+                }
+                sb.append("cid=").append(cid);
+            } catch (Exception ignore) {
+                // correlation id opcional
+            }
+            Element root = msg.asElement();
+            if (root != null && root.hasElement("reason")) {
+                Element reason = root.getElement("reason");
+                if (reason.hasElement("category")) {
+                    sb.append(" category=").append(reason.getElementAsString("category"));
+                }
+                if (reason.hasElement("description")) {
+                    sb.append(" description='").append(reason.getElementAsString("description")).append("'");
+                }
+            }
+            return sb.toString().trim();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private Long correlationIdValue(Message msg) {
+        try {
+            return msg.correlationID().value();
+        } catch (IllegalStateException ex) {
+            return null;
+        } catch (Exception ex) {
+            log.debug("bloomberg correlation id no disponible: {}", ex.getMessage());
+            return null;
+        }
     }
 }

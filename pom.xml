@@ -6,7 +6,7 @@
 
 	<groupId>cl.vc.arb</groupId>
 	<artifactId>ORB-BLOOMBERG</artifactId>
-	<version>1.8</version>
+	<version>1.14</version>
 	<name>ORB-BLOOMBERG</name>
 
 	<properties>
@@ -171,7 +171,6 @@
 					<groupId>com.bloomberglp</groupId>
 					<artifactId>blpapi</artifactId>
 					<version>${blpapi.version}</version>
-					<scope>provided</scope>
 				</dependency>
 			</dependencies>
 			<build>

@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * instrumento. En arranque, inicia la ingesta segun {@code securityExchange}:
  * <ul>
  *   <li>{@code simulador=yes} -> precarga la security list desde los precios de referencia.</li>
- *   <li>{@code BLOOMBERG_MKD} -> abre la sesion BLPAPI (cargada por reflexion; solo existe con -Pbloomberg).</li>
+ *   <li>modo en vivo -> abre la sesion BLPAPI (cargada por reflexion; solo existe con -Pbloomberg).</li>
  * </ul>
  */
 @Slf4j
@@ -69,11 +69,8 @@ public class SellSideManager extends AbstractActor {
             });
             log.info("sell side simulator mode populated {} securities", MainApp.getSimulatorPrices().size());
 
-        } else if (MainApp.securityExchange == MarketDataMessage.SecurityExchangeMarketData.BLOOMBERG_MKD) {
-            startBloomberg();
         } else {
-            log.warn("sell side: securityExchange={} sin ingesta configurada (usa BLOOMBERG_MKD o simulador=yes)",
-                    MainApp.securityExchange);
+            startBloomberg();
         }
     }
 
