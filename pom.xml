@@ -6,7 +6,7 @@
 
 	<groupId>cl.vc.arb</groupId>
 	<artifactId>ORB-BLOOMBERG</artifactId>
-	<version>1.14</version>
+	<version>1.15</version>
 	<name>ORB-BLOOMBERG</name>
 
 	<properties>

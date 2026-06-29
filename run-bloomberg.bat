@@ -10,7 +10,7 @@ cd /d "%~dp0"
 if not exist logs mkdir logs
 
 REM --- Ajusta estas dos rutas a tu instalacion ---
-set APP_VERSION=1.14
+set APP_VERSION=1.15
 set BLPAPI_VERSION=3.26.5.1
 set BLPAPI_DLL_DIR=C:\blp\DAPI
 

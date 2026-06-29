@@ -3,6 +3,7 @@ package cl.vc.arb.apps.fh;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import cl.vc.arb.apps.fh.kafka.SendKafkaAndMongo;
+import cl.vc.arb.apps.fh.remote.RemoteOrbClient;
 import cl.vc.arb.apps.fh.ss.GlobalTradeSimulator;
 import cl.vc.arb.apps.fh.ss.SimulatorPriceLoader;
 import cl.vc.arb.apps.fh.ss.SimulatorPriceRef;
@@ -111,6 +112,17 @@ public class MainApp {
     private static ActorRef actorKafka;
 
     @Getter
+    @Setter
+    private static volatile boolean remoteClientConnected = false;
+
+    @Getter
+    @Setter
+    private static volatile String remoteClientHost = "";
+
+    @Getter
+    private static ActorRef remoteClient;
+
+    @Getter
     private static ActorRef clientManager;
 
     @Getter
@@ -204,14 +216,21 @@ public class MainApp {
 
             securityExchange = resolveSecurityExchange(properties.getProperty("securityExchange"));
 
-            sellSideManager = system.actorOf(SellSideManager.props(properties, eventBus));
-            clientManager = system.actorOf(ClientManager.props());
+            boolean remoteMode = Boolean.parseBoolean(properties.getProperty("remote.client.enabled", "false"));
+
+            if (remoteMode) {
+                remoteClient = system.actorOf(RemoteOrbClient.props(properties), "remote-orb-client");
+                log.info("remote client mode enabled host={}", properties.getProperty("remote.client.host"));
+            } else {
+                sellSideManager = system.actorOf(SellSideManager.props(properties, eventBus));
+                clientManager = system.actorOf(ClientManager.props());
+            }
 
             actorKafka = system.actorOf(SendKafkaAndMongo.props(properties));
 
             log.info("App... {}", securityExchange.name());
 
-            boolean isSimulator = "yes".equalsIgnoreCase(properties.getProperty("simulador", "no"));
+            boolean isSimulator = !remoteMode && "yes".equalsIgnoreCase(properties.getProperty("simulador", "no"));
             if (isSimulator) {
                 String pricesFile = properties.getProperty("simulador.prices.file");
                 simulatorPrices = SimulatorPriceLoader.load(pricesFile);
@@ -220,15 +239,17 @@ public class MainApp {
                 log.info("simulator mode enabled prices={} refreshMs={}", simulatorPrices.size(), refreshMs);
             }
 
-            boolean nettyPayloadLogging = Boolean.parseBoolean(
-                    properties.getProperty("netty.payload.logging", "false"));
+            if (!remoteMode) {
+                boolean nettyPayloadLogging = Boolean.parseBoolean(
+                        properties.getProperty("netty.payload.logging", "false"));
 
-            nettyProtobufServer =
-                    new NettyProtobufServer(properties.getProperty("server.host"),
-                            clientManager, properties.getProperty("path.logs"),
-                            securityExchange.name(), nettyPayloadLogging);
+                nettyProtobufServer =
+                        new NettyProtobufServer(properties.getProperty("server.host"),
+                                clientManager, properties.getProperty("path.logs"),
+                                securityExchange.name(), nettyPayloadLogging);
 
-            new Thread(nettyProtobufServer).start();
+                new Thread(nettyProtobufServer).start();
+            }
 
             primeConfiguredSymbols();
 
@@ -249,7 +270,9 @@ public class MainApp {
 
             start();
             startDiagnostics();
-            autoSubscribeConfiguredSymbols();
+            if (!remoteMode) {
+                autoSubscribeConfiguredSymbols();
+            }
 
         } catch (Exception ex) {
             log.error(ex.getMessage(), ex);

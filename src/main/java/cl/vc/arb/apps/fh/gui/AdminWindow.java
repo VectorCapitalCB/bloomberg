@@ -584,17 +584,21 @@ public class AdminWindow {
 
     private void refresh() {
         try {
-            boolean sim = "yes".equalsIgnoreCase(MainApp.getProperties().getProperty("simulador", "no"));
+            boolean remote = Boolean.parseBoolean(MainApp.getProperties().getProperty("remote.client.enabled", "false"));
+            boolean sim = !remote && "yes".equalsIgnoreCase(MainApp.getProperties().getProperty("simulador", "no"));
             BloombergGateway g = MainApp.getBloombergGateway();
-            boolean conn = sim || (g != null && g.isConnected());
-            statusPill.setText("●  " + (conn ? (sim ? "simulador" : "conectado") : "desconectado"));
+            boolean conn = remote ? MainApp.isRemoteClientConnected() : (sim || (g != null && g.isConnected()));
+            statusPill.setText("●  " + (conn ? (remote ? "remoto" : (sim ? "simulador" : "conectado")) : "desconectado"));
             statusPill.setForeground(conn ? GREEN : RED);
             statusPill.setBackground(conn ? new Color(0x14241a) : new Color(0x2a1413));
 
-            String host = MainApp.getProperties().getProperty("bloomberg.host", "localhost");
-            String port = MainApp.getProperties().getProperty("bloomberg.port", "8194");
-            lblSub.setText("Bloomberg " + host + ":" + port + (sim ? "  ·  SIMULADOR" : "")
-                    + "      clientes proto → " + nettyEndpoint()
+            String source = remote
+                    ? "ORB remoto " + MainApp.getProperties().getProperty("remote.client.host", MainApp.getRemoteClientHost())
+                    : "Bloomberg " + MainApp.getProperties().getProperty("bloomberg.host", "localhost")
+                    + ":" + MainApp.getProperties().getProperty("bloomberg.port", "8194") + (sim ? "  ·  SIMULADOR" : "");
+            String endpoint = remote ? "cliente remoto" : "clientes proto → " + nettyEndpoint();
+            lblSub.setText(source
+                    + "      " + endpoint
                     + "      uptime " + uptime(System.currentTimeMillis() - MainApp.getStartTimeMs()));
 
             long ticks = MainApp.getBloombergTicks().sum();
@@ -767,6 +771,10 @@ public class AdminWindow {
                     .setSettlType(RoutingMessage.SettlType.REGULAR)
                     .setTrade(true).setStatistic(true).setBook(true)
                     .setDepth(MarketDataMessage.Depth.TOP_OF_THE_BOOK).build();
+            if (MainApp.getSellSideManager() == null) {
+                log.warn("admin gui: suscripcion manual no disponible en modo remoto; configura bootstrap.subscribe.symbols");
+                return;
+            }
             MainApp.getSellSideManager().tell(new SellSideManager.Subscribe(sub, ActorRef.noSender()), ActorRef.noSender());
             log.info("admin gui: suscripcion manual symbol='{}'", s);
             symField.setText("");
@@ -780,7 +788,9 @@ public class AdminWindow {
         if (r < 0) return;
         Row row = model.rowAt(r);
         if (row.topic == null) return;
-        MainApp.getSellSideManager().tell(new SellSideManager.AdminUnsub(row.topic), ActorRef.noSender());
+        if (MainApp.getSellSideManager() != null) {
+            MainApp.getSellSideManager().tell(new SellSideManager.AdminUnsub(row.topic), ActorRef.noSender());
+        }
         MainApp.bookHasmap.remove(row.topic);
         log.info("admin gui: desuscripcion topic='{}'", row.topic);
     }

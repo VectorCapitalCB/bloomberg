@@ -15,7 +15,7 @@ REM ============================================================
 setlocal
 cd /d "%~dp0"
 
-set APP_VERSION=1.14
+set APP_VERSION=1.15
 set VENDOR=VectorCapital
 set UPGRADE_UUID=7b9d2f4a-3c61-4e8b-a2d5-1f0e6c8b4a93
 
