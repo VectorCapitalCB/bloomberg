@@ -94,6 +94,9 @@ public class MainApp {
     /** Estado del monitor de latencia: true si ya avisamos que la data esta estancada. */
     private static volatile boolean staleNotified = false;
 
+    /** Ultimo intento de reconexion gatillado por data estancada. Evita reconectar en loop. */
+    private static final java.util.concurrent.atomic.AtomicLong lastStaleReconnectMs = new java.util.concurrent.atomic.AtomicLong(0);
+
     /** Bloomberg ingest gateway (BLPAPI). Null en simulador o si el build no incluye bbg/ (-Pbloomberg). */
     @Getter
     @Setter
@@ -308,8 +311,9 @@ public class MainApp {
                         outboundEvicted.sum(),
                         actorKafka != null);
 
+                boolean bbgConnected = bloombergGateway != null && bloombergGateway.isConnected();
                 log.info("DATA exchange={} ticksRecibidos={} suscripcionesActivas={} booksListos={} bloombergConectado={}",
-                        securityExchange, bloombergTicks.sum(), bookHasmap.size(), readySnapshots, bloombergGateway != null);
+                        securityExchange, bloombergTicks.sum(), bookHasmap.size(), readySnapshots, bbgConnected);
             } catch (Exception e) {
                 log.warn("health diagnostics failed", e);
             }
@@ -332,10 +336,14 @@ public class MainApp {
         }
         long threshold = Long.parseLong(properties.getProperty("bloomberg.stale.threshold.ms", "8000"));
         long check = Long.parseLong(properties.getProperty("bloomberg.latency.check.ms", "3000"));
+        boolean reconnectEnabled = Boolean.parseBoolean(properties.getProperty("bloomberg.stale.reconnect.enabled", "true"));
+        long reconnectAfter = Long.parseLong(properties.getProperty("bloomberg.stale.reconnect.after.ms", "60000"));
+        long reconnectCooldown = Long.parseLong(properties.getProperty("bloomberg.stale.reconnect.cooldown.ms", "300000"));
 
         DIAGNOSTICS.scheduleAtFixedRate(() -> {
             try {
-                boolean live = bloombergGateway != null && bloombergGateway.isConnected();
+                cl.vc.arb.apps.fh.ingest.BloombergGateway gw = bloombergGateway;
+                boolean live = gw != null && gw.isConnected();
                 if (!live || bookHasmap.isEmpty()) {
                     return;
                 }
@@ -349,6 +357,13 @@ public class MainApp {
                     cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
                             cl.vc.arb.apps.fh.notif.NotificationType.LATENCIA, "Latencia Bloomberg",
                             "sin data hace " + (gap / 1000) + "s (¿lag o feed caido?)");
+                }
+                if (reconnectEnabled && gap > reconnectAfter && shouldReconnectStale(reconnectCooldown)) {
+                    log.warn("bloomberg stale watchdog: sin data hace {}s, reciclando sesion BLPAPI", gap / 1000);
+                    cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
+                            cl.vc.arb.apps.fh.notif.NotificationType.DESCONEXION, "Bloomberg",
+                            "sin data hace " + (gap / 1000) + "s; reconectando sesion");
+                    reconnectBloomberg(gw);
                 } else if (gap <= threshold && staleNotified) {
                     staleNotified = false;
                     cl.vc.arb.apps.fh.notif.NotificationCenter.get().publish(
@@ -360,7 +375,27 @@ public class MainApp {
             }
         }, check, check, TimeUnit.MILLISECONDS);
 
-        log.info("latency monitor enabled thresholdMs={} checkMs={}", threshold, check);
+        log.info("latency monitor enabled thresholdMs={} checkMs={} staleReconnect={} reconnectAfterMs={} reconnectCooldownMs={}",
+                threshold, check, reconnectEnabled, reconnectAfter, reconnectCooldown);
+    }
+
+    private static boolean shouldReconnectStale(long cooldownMs) {
+        long now = System.currentTimeMillis();
+        long last = lastStaleReconnectMs.get();
+        return now - last >= cooldownMs && lastStaleReconnectMs.compareAndSet(last, now);
+    }
+
+    private static void reconnectBloomberg(cl.vc.arb.apps.fh.ingest.BloombergGateway gw) {
+        try {
+            gw.stop();
+        } catch (Exception e) {
+            log.warn("bloomberg stale watchdog: error deteniendo sesion: {}", e.getMessage());
+        }
+        try {
+            gw.start();
+        } catch (Exception e) {
+            log.warn("bloomberg stale watchdog: error reiniciando sesion: {}", e.getMessage());
+        }
     }
 
     public static void suscribe(String id, ActorRef actorRef) {
